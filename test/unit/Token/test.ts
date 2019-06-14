@@ -82,7 +82,7 @@ tape('Token', (test) => {
     });
 
     test.test('test', (test) => {
-        test.test('with one parameter', (test) => {
+        test.test('accept a single parameter', (test) => {
             let token = new Token(TokenType.TEXT, 'foo', 1, 1);
 
             test.true(token.test(TokenType.TEXT));
@@ -91,7 +91,7 @@ tape('Token', (test) => {
             test.end();
         });
 
-        test.test('with two parameters', (test) => {
+        test.test('accept two parameters', (test) => {
             test.test('with string as second parameter', (test) => {
                 let token = new Token(TokenType.TEXT, 'foo', 1, 1);
 

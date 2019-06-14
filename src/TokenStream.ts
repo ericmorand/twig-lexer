@@ -1,5 +1,4 @@
 import {Token, TokenType} from "./Token";
-import {SyntaxError} from "./SyntaxError";
 
 const array_merge = require('locutus/php/array/array_merge');
 
@@ -13,7 +12,12 @@ export class TokenStream {
         this.source = source;
     }
 
-    public toString() {
+    /**
+     * Return a human-readable representation of the stream.
+     *
+     * @return string
+     */
+    public toString(): string {
         return this.tokens.map(function (token: Token) {
             return token.toString();
         }).join('\n');
@@ -24,7 +28,7 @@ export class TokenStream {
      *
      * @return string
      */
-    public serialize() {
+    public serialize(): string {
         return this.tokens.map(function (token: Token) {
             return token.serialize();
         }).join('');
@@ -52,19 +56,19 @@ export class TokenStream {
         this.current++;
 
         if (this.current >= this.tokens.length) {
-            throw new SyntaxError('Unexpected end of template.', this.tokens[this.current - 1].getLine(), this.tokens[this.current - 1].getColumn());
+            throw new Error('Unexpected end of template.');
         }
 
         return this.tokens[this.current - 1];
     }
 
     /**
-     * Tests a token, sets the pointer to the next one and returns it.
+     * Test a token, set the pointer to the next one and return the tested token.
      *
      * @return Token|null The next token if the condition is true, null otherwise
      */
-    public nextIf(primary: TokenType, secondary: Array<string> | string = null) {
-        if (this.tokens[this.current].test(primary, secondary)) {
+    public nextIf(primary: TokenType, contents: string | string[] | number = null) {
+        if (this.tokens[this.current].test(primary, contents)) {
             return this.next();
         }
 
@@ -72,21 +76,21 @@ export class TokenStream {
     }
 
     /**
-     * Tests a token and returns it or throws a syntax error.
+     * Test a token, set the pointer to the next one and return the tested token or throw an error.
+     *
+     * @param {TokenType} type
+     * @param {string | string[] | number} contents
+     *
+     * @throw Error
      *
      * @return Token
      */
-    public expect(type: TokenType, content: Array<string> | string | number = null, message: string = null) {
+    public expect(type: TokenType, contents?: string | string[] | number) {
         let token = this.tokens[this.current];
 
-        if (!token.test(type, content)) {
-            let line = token.getLine();
-            let column = token.getColumn();
-
-            throw new SyntaxError(
-                `${message ? message + '. ' : ''}Unexpected token "${Token.typeToEnglish(token.getType())}" of value "${token.getContent()}" ("${Token.typeToEnglish(type)}" expected${content ? ` with value "${content}"` : ''}).`,
-                line,
-                column
+        if (!token.test(type, contents)) {
+            throw new Error(
+                `Unexpected token "${Token.typeToEnglish(token.getType())}" of value "${token.getContent()}" ("${Token.typeToEnglish(type)}" expected${contents ? ` with value "${contents}"` : ''}).`,
             );
         }
 
@@ -96,32 +100,31 @@ export class TokenStream {
     }
 
     /**
-     * Looks at the next token.
+     * Look at the next token.
      *
      * @param {number} number
-     * @param {boolean} throw_
+     *
+     * @throw Error
      *
      * @return Token
      */
-    public look(number: number = 1, throw_: boolean = true) {
+    public look(number: number = 1) {
         let index = this.current + number;
 
         if (index >= this.tokens.length) {
-            if (throw_) {
-                throw new SyntaxError('Unexpected end of template.', this.tokens[this.current + number - 1].getLine(), this.tokens[this.current + number - 1].getColumn());
-            }
+            throw new Error('Unexpected end of template.');
         }
 
         return this.tokens[index];
     }
 
     /**
-     * Tests the active token.
+     * Test the active token.
      *
      * @return bool
      */
-    public test(primary: TokenType, secondary: Array<string> | string = null) {
-        return this.tokens[this.current].test(primary, secondary);
+    public test(primary: TokenType, contents: string | string[] | number = null) {
+        return this.getCurrent().test(primary, contents);
     }
 
     /**
@@ -130,7 +133,7 @@ export class TokenStream {
      * @return bool
      */
     public isEOF() {
-        return this.tokens[this.current].getType() === TokenType.EOF;
+        return this.getCurrent().getType() === TokenType.EOF;
     }
 
     /**
