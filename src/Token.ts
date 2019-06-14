@@ -3,15 +3,14 @@ export enum TokenType {
     TEXT = 'TEXT',
     BLOCK_START = 'BLOCK_START',
     BLOCK_END = 'BLOCK_END',
-    VAR_START = 'VAR_START',
-    VAR_END = 'VAR_END',
+    VARIABLE_START = 'VARIABLE_START',
+    VARIABLE_END = 'VARIABLE_END',
     NAME = 'NAME',
     NUMBER = 'NUMBER',
     STRING = 'STRING',
     OPERATOR = 'OPERATOR',
     TEST_OPERATOR = 'TEST_OPERATOR',
     PUNCTUATION = 'PUNCTUATION',
-    PROPERTY = 'PROPERTY',
     INTERPOLATION_START = 'INTERPOLATION_START',
     INTERPOLATION_END = 'INTERPOLATION_END',
     COMMENT_START = 'COMMENT_START',
@@ -40,7 +39,7 @@ export class Token {
     /**
      * Returns the constant representation (internal) of a given type.
      *
-     * @param {TokenType} type The type
+     * @param {TokenType} type The token type
      * @param {boolean} short Whether to return a short representation or not
      *
      * @returns {string} The string representation
@@ -48,8 +47,7 @@ export class Token {
     static typeToString(type: TokenType, short: boolean = false) {
         if (TokenType[type]) {
             return short ? type : 'TokenType.' + type;
-        }
-        else {
+        } else {
             throw new Error(`Token of type "${type}" does not exist.`);
         }
     }
@@ -57,11 +55,11 @@ export class Token {
     /**
      * Returns the English representation of a given type.
      *
-     * @param {int} type The type as an integer
+     * @param {TokenType} type The token type
      *
-     * @returns {string} The string representation
+     * @return {string} The string representation
      */
-    static typeToEnglish(type: string): string {
+    static typeToEnglish(type: TokenType): string {
         switch (type) {
             case TokenType.EOF:
                 return 'end of template';
@@ -69,11 +67,11 @@ export class Token {
                 return 'text';
             case TokenType.BLOCK_START:
                 return 'begin of statement block';
-            case TokenType.VAR_START:
+            case TokenType.VARIABLE_START:
                 return 'begin of print statement';
             case TokenType.BLOCK_END:
                 return 'end of statement block';
-            case TokenType.VAR_END:
+            case TokenType.VARIABLE_END:
                 return 'end of print statement';
             case TokenType.NAME:
                 return 'name';
@@ -87,8 +85,6 @@ export class Token {
                 return 'test operator';
             case TokenType.PUNCTUATION:
                 return 'punctuation';
-            case TokenType.PROPERTY:
-                return 'property';
             case TokenType.INTERPOLATION_START:
                 return 'begin of string interpolation';
             case TokenType.INTERPOLATION_END:
@@ -116,10 +112,10 @@ export class Token {
      * Tests the current token for a type and/or a content.
      *
      * @param {TokenType} type
-     * @param {string|Array<string>} contents
+     * @param {string|string[]|number} contents
      * @returns {boolean}
      */
-    public test(type: TokenType, contents: Array<string> | string | number = null) {
+    public test(type: TokenType, contents: string | string[] | number = null) {
         return (this.type === type) && (contents === null || (Array.isArray(contents) && contents.includes(this.content)) || this.content == contents);
     }
 
