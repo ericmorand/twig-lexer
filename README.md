@@ -12,6 +12,10 @@ npm install twig-lexer --save-dev
 
 Read the [documentation](https://nightlycommit.github.io/twig-lexer) for more information.
 
+## About the _operator_ confusion
+
+https://github.com/twigphp/Twig/issues/3066
+
 ## License
 
 Apache-2.0 © [Eric MORAND]()

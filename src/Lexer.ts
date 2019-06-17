@@ -1,9 +1,5 @@
 import {Token, TokenType} from "./Token";
-import {TokenStream} from "./TokenStream";
 import {SyntaxError} from "./SyntaxError";
-
-let preg_quote = require('locutus/php/pcre/preg_quote');
-let ctype_alpha = require('locutus/php/ctype/ctype_alpha');
 
 export enum LexerState {
     DATA = 'DATA',
@@ -36,7 +32,6 @@ export type LexerRegexes = {
 };
 
 export class Lexer {
-    static REGEX_TEST_OPERATOR = /^(is\s+not|is)/;
     static REGEX_NAME = /^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*/;
     static REGEX_NUMBER = /^[0-9]+(?:\.[0-9]+)?/;
     static REGEX_STRING = /^(")([^#"\\]*(?:\\.[^#"\\]*)*)(")|^(')([^'\\]*(?:\\.[^'\\]*)*)(')/;
@@ -64,8 +59,6 @@ export class Lexer {
     private state: LexerState;
     private states: LexerState[];
     private tokens: Token[];
-    private latestStructuringToken: Token;
-    private nextIsProperty = false;
 
     protected options: LexerOptions;
     protected operators: string[];
@@ -73,7 +66,6 @@ export class Lexer {
     constructor() {
         this.operators = [
             '=',
-            'not',
             '-',
             '+',
             'or',
@@ -87,8 +79,11 @@ export class Lexer {
             '<=',
             '>',
             '>=',
-            'not in',
+            'is',
+            'is not',
+            'not',
             'in',
+            'not in',
             'matches',
             'starts with',
             'ends with',
@@ -155,14 +150,14 @@ export class Lexer {
                     '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
                 ),
                 operator: this.getOperatorRegEx(),
-                whitespace: new RegExp('^\\s+')
+                whitespace: new RegExp('^[ \\r\\n\\t\\f\\v]+')
             };
         }
 
         return this.regexes;
     }
 
-    public tokenize(source: string): TokenStream {
+    public tokenize(source: string): Token[] {
         this.source = source;
         this.cursor = 0;
         this.end = this.source.length;
@@ -215,7 +210,7 @@ export class Lexer {
             throw new SyntaxError(`Unexpected end of file: unclosed "${bracket.value}" opened at {${bracket.line}:${bracket.column}}.`, this.lineno, this.columnno);
         }
 
-        return new TokenStream(this.tokens, this.source);
+        return this.tokens;
     }
 
     protected lexData() {
@@ -353,17 +348,12 @@ export class Lexer {
 
         punctuationCandidate = candidate.substr(0, 1);
 
-        // test operator
-        if ((match = Lexer.REGEX_TEST_OPERATOR.exec(candidate)) !== null) {
-            this.pushToken(TokenType.NAME, match[0]);
-            this.moveCursor(match[0]);
-        }
-        // operators
-        else if ((match = this.getRegexes().operator.exec(candidate)) !== null) {
+        // operator
+        if ((match = this.getRegexes().operator.exec(candidate)) !== null) {
             this.pushToken(TokenType.OPERATOR, match[0]);
             this.moveCursor(match[0]);
         }
-        // names
+        // name
         else if ((match = Lexer.REGEX_NAME.exec(candidate)) !== null) {
             let content = match[0];
 
@@ -374,7 +364,7 @@ export class Lexer {
             this.pushToken(TokenType.NAME, content);
             this.moveCursor(content);
         }
-        // numbers
+        // number
         else if ((match = Lexer.REGEX_NUMBER.exec(candidate)) !== null) {
             this.pushToken(TokenType.NUMBER, match[0]);
             this.moveCursor(match[0]);
@@ -412,7 +402,7 @@ export class Lexer {
 
             this.moveCursor(punctuationCandidate);
         }
-        // strings
+        // string
         else if ((match = Lexer.REGEX_STRING.exec(candidate)) !== null) {
             let openingBracket = match[1] || match[4];
             let content = match[2] || match[5];
@@ -577,24 +567,23 @@ export class Lexer {
 
         for (let operator of operators) {
             let length: number = operator.length;
-            let pattern: string;
+            let pattern: string = operator.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
-            // an operator that ends with a character must be followed by
-            // a whitespace or a parenthesis
-            if (ctype_alpha(operator[length - 1])) {
-                pattern = preg_quote(operator, '/') + '(?=[\\s()])';
-            } else {
-                pattern = preg_quote(operator, '/');
+            // an operator that ends with a character must be followed by a whitespace or an opening parenthesis
+            if (new RegExp('[A-Za-z]').test(operator[length - 1])) {
+                pattern += '(?=[\\s(])';
             }
 
-            // an operator with a space can be any amount of whitespaces
+            // a space within an operator can be any amount of whitespaces
             pattern = pattern.replace(/\s+/, '\\s+');
 
-            patterns.push('^' + pattern);
+            patterns.push(pattern);
         }
 
-        return new RegExp(patterns.join('|'));
-    };
+        let pattern:string = `^(${patterns.join('|')})`;
+
+        return new RegExp(pattern);
+    }
 
     protected pushToken(type: TokenType, content: any) {
         if ((type === TokenType.TEXT || type === TokenType.WHITESPACE) && (content.length < 1)) {
@@ -608,17 +597,6 @@ export class Lexer {
         if (content) {
             this.moveCoordinates(content);
         }
-
-        switch (token.getType()) {
-            case TokenType.WHITESPACE:
-            case TokenType.WHITESPACE_CONTROL_MODIFIER_TRIMMING:
-            case TokenType.WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING:
-                break;
-            default:
-                this.latestStructuringToken = token;
-        }
-
-        this.nextIsProperty = false;
     }
 
     protected pushWhitespaceTrimToken(modifier: string) {

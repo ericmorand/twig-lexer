@@ -9,7 +9,6 @@ export enum TokenType {
     NUMBER = 'NUMBER',
     STRING = 'STRING',
     OPERATOR = 'OPERATOR',
-    TEST_OPERATOR = 'TEST_OPERATOR',
     PUNCTUATION = 'PUNCTUATION',
     INTERPOLATION_START = 'INTERPOLATION_START',
     INTERPOLATION_END = 'INTERPOLATION_END',
@@ -81,8 +80,6 @@ export class Token {
                 return 'string';
             case TokenType.OPERATOR:
                 return 'operator';
-            case TokenType.TEST_OPERATOR:
-                return 'test operator';
             case TokenType.PUNCTUATION:
                 return 'punctuation';
             case TokenType.INTERPOLATION_START:

@@ -11,7 +11,6 @@ tape('Token', (test) => {
         test.same(Token.typeToString(TokenType.NAME), 'TokenType.NAME');
         test.same(Token.typeToString(TokenType.NUMBER), 'TokenType.NUMBER');
         test.same(Token.typeToString(TokenType.OPERATOR), 'TokenType.OPERATOR');
-        test.same(Token.typeToString(TokenType.TEST_OPERATOR), 'TokenType.TEST_OPERATOR');
         test.same(Token.typeToString(TokenType.PUNCTUATION), 'TokenType.PUNCTUATION');
         test.same(Token.typeToString(TokenType.STRING), 'TokenType.STRING');
         test.same(Token.typeToString(TokenType.TEXT), 'TokenType.TEXT');
@@ -30,7 +29,6 @@ tape('Token', (test) => {
         test.same(Token.typeToString(TokenType.NAME, true), 'NAME');
         test.same(Token.typeToString(TokenType.NUMBER, true), 'NUMBER');
         test.same(Token.typeToString(TokenType.OPERATOR, true), 'OPERATOR');
-        test.same(Token.typeToString(TokenType.TEST_OPERATOR, true), 'TEST_OPERATOR');
         test.same(Token.typeToString(TokenType.PUNCTUATION, true), 'PUNCTUATION');
         test.same(Token.typeToString(TokenType.STRING, true), 'STRING');
         test.same(Token.typeToString(TokenType.TEXT, true), 'TEXT');
@@ -60,7 +58,6 @@ tape('Token', (test) => {
         test.same(Token.typeToEnglish(TokenType.NAME), 'name');
         test.same(Token.typeToEnglish(TokenType.NUMBER), 'number');
         test.same(Token.typeToEnglish(TokenType.OPERATOR), 'operator');
-        test.same(Token.typeToEnglish(TokenType.TEST_OPERATOR), 'test operator');
         test.same(Token.typeToEnglish(TokenType.PUNCTUATION), 'punctuation');
         test.same(Token.typeToEnglish(TokenType.STRING), 'string');
         test.same(Token.typeToEnglish(TokenType.TEXT), 'text');
