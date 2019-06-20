@@ -10,35 +10,39 @@ export enum LexerState {
 }
 
 export type LexerOptions = {
-    interpolation: Array<string>,
-    tag_block: Array<string>,
-    tag_comment: Array<string>,
-    tag_variable: Array<string>,
+    interpolation: [string, string],
+    tag_block: [string, string],
+    tag_comment: [string, string]
+    tag_variable: [string, string],
     whitespace_trim: string,
     line_whitespace_trim: string
 };
 
-export type LexerRegexes = {
-    interpolation_start: RegExp, // #{
-    interpolation_end: RegExp, // }
-    tag_start: RegExp, // {{, {%, {#
-    var_end: RegExp, // }}
-    block_end: RegExp, // %}
-    comment_end: RegExp, // #}
-    verbatim_tag_end: RegExp, // verbatim %}
-    endverbatim_tag: RegExp, // {% endverbatim %}
-    operator: RegExp,
-    whitespace: RegExp
-};
+export const nameRegExp: RegExp = /^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*/;
+export const numberRegExp: RegExp = /^[0-9]+(?:\.[0-9]+)?/;
+export const stringRegExp: RegExp = /^(")([^#"\\]*(?:\\.[^#"\\]*)*)(")|^(')([^'\\]*(?:\\.[^'\\]*)*)(')/;
+export const openingBracketRegExp: RegExp = /[(\[{]/;
+export const closingBracketRegExp: RegExp = /[)\]}]/;
+export const punctuationRegExp: RegExp = /[?:.,|]/;
+export const doubleQuotedStringDelimiterRegExp: RegExp = /^"/;
+export const doubleQuotedStringPartRegExp: RegExp = /^[^#"\\]*(?:(?:\\\\.|#(?!{))[^#"\\]*)*/;
+export const lineSeparatorRegExp: RegExp = /\r\n|\r|\n/;
+export const whitespaceRegExp: RegExp = /^[ \r\n\t\f\v]+/;
 
 export class Lexer {
-    static REGEX_NAME = /^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*/;
-    static REGEX_NUMBER = /^[0-9]+(?:\.[0-9]+)?/;
-    static REGEX_STRING = /^(")([^#"\\]*(?:\\.[^#"\\]*)*)(")|^(')([^'\\]*(?:\\.[^'\\]*)*)(')/;
     static REGEX_DQ_STRING_DELIM = /^"/;
     static REGEX_DQ_STRING_PART = /^[^#"\\]*(?:(?:\\\\.|#(?!{))[^#"\\]*)*/;
-    static PUNCTUATION = '()[]{}?:.,|';
     static LINE_SEPARATORS = ['\\r\\n', '\\r', '\\n'];
+
+    private _interpolationStartRegExp: RegExp;
+    private _interpolationEndRegExp: RegExp;
+    private _tagStartRegExp: RegExp;
+    private _variableEndRegExp: RegExp;
+    private _blockEndRegExp: RegExp;
+    private _commentEndRegExp: RegExp;
+    private _verbatimTagEndRegExp: RegExp;
+    private _endverbatimTagRegExp: RegExp;
+    private _operatorRegExp: RegExp;
 
     private brackets: {
         value: string,
@@ -54,7 +58,6 @@ export class Lexer {
     private columnno: number; // 1-based
     private position: number;
     private positions: RegExpExecArray[];
-    private regexes: LexerRegexes;
     private source: string;
     private state: LexerState;
     private states: LexerState[];
@@ -109,52 +112,168 @@ export class Lexer {
         };
     }
 
-    protected getRegexes(): LexerRegexes {
-        if (!this.regexes) {
-            let whitespaceTrimmingPattern = this.options.whitespace_trim + '|' + this.options.line_whitespace_trim;
-
-            this.regexes = {
-                interpolation_start: new RegExp(
-                    // ^(#{)(\s*)
-                    '^(' + this.options.interpolation[0] + ')(\\s*)'
-                ),
-                interpolation_end: new RegExp(
-                    // ^(\s*)(})
-                    '^(\\s*)(' + this.options.interpolation[1] + ')'
-                ),
-                tag_start: new RegExp(
-                    // ({{|{%|{#)(-|~)?
-                    '(' + [this.options.tag_variable[0], this.options.tag_block[0], this.options.tag_comment[0]].join('|') + ')' +
-                    '(' + whitespaceTrimmingPattern + ')?', 'g'
-                ),
-                var_end: new RegExp(
-                    // ^(-|~?)(}})
-                    '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_variable[1] + ')'
-                ),
-                block_end: new RegExp(
-                    // ^(-|~?)(%}(?:\r\n|\r|\n)?)
-                    '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + '(?:' + Lexer.LINE_SEPARATORS.join('|') + ')?)'
-                ),
-                comment_end: new RegExp(
-                    // (\s*)(-|~?)(#}(?:\r\n|\r|\n)?)
-                    '(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_comment[1] + '(?:' + Lexer.LINE_SEPARATORS.join('|') + ')?)'
-                ),
-                verbatim_tag_end: new RegExp(
-                    // ^(\s*)(verbatim)(\s*)(-|~?)(%})
-                    '^(\\s*)(verbatim)(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
-                ),
-                endverbatim_tag: new RegExp(
-                    // ({%)(-|~?)(\s*)(endverbatim)(\s*)(-|~?)(%})
-                    '(' + this.options.tag_block[0] + ')(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)' +
-                    '(\\s*)(endverbatim)(\\s*)' +
-                    '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
-                ),
-                operator: this.getOperatorRegEx(),
-                whitespace: new RegExp('^[ \\r\\n\\t\\f\\v]+')
-            };
+    /**
+     * Return the regular expression used to match an "interpolation start" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get interpolationStartRegExp(): RegExp {
+        if (!this._interpolationStartRegExp) {
+            this._interpolationStartRegExp = new RegExp(
+                '^(' + this.options.interpolation[0] + ')(\\s*)'
+            );
         }
 
-        return this.regexes;
+        return this._interpolationStartRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match an "interpolation end" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get interpolationEndRegExp(): RegExp {
+        if (!this._interpolationEndRegExp) {
+            this._interpolationEndRegExp = new RegExp(
+                '^(\\s*)(' + this.options.interpolation[1] + ')'
+            );
+        }
+
+        return this._interpolationEndRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a tag start.
+     *
+     * @return {RegExp}
+     */
+    protected get tagStartRegExp(): RegExp {
+        if (!this._tagStartRegExp) {
+            this._tagStartRegExp = new RegExp(
+                '(' + [this.options.tag_variable[0], this.options.tag_block[0], this.options.tag_comment[0]].join('|') + ')' +
+                '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + ')?', 'g'
+            );
+        }
+
+        return this._tagStartRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a "variable end" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get variableEndRegExp(): RegExp {
+        if (!this._variableEndRegExp) {
+            this._variableEndRegExp = new RegExp(
+                '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_variable[1] + ')'
+            );
+        }
+
+        return this._variableEndRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a "block end" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get blockEndRegExp(): RegExp {
+        if (!this._blockEndRegExp) {
+            this._blockEndRegExp = new RegExp(
+                '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + '(?:' + Lexer.LINE_SEPARATORS.join('|') + ')?)'
+            );
+        }
+
+        return this._blockEndRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a "comment end" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get commentEndRegExp(): RegExp {
+        if (!this._commentEndRegExp) {
+            this._commentEndRegExp = new RegExp(
+                '(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_comment[1] + '(?:' + Lexer.LINE_SEPARATORS.join('|') + ')?)'
+            );
+        }
+
+        return this._commentEndRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a "verbatim tag" end.
+     *
+     * @return {RegExp}
+     */
+    protected get verbatimTagEndRegExp(): RegExp {
+        if (!this._verbatimTagEndRegExp) {
+            this._verbatimTagEndRegExp = new RegExp(
+                '^(\\s*)(verbatim)(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
+            );
+        }
+
+        return this._verbatimTagEndRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match a "endverbatim" tag.
+     *
+     * @return {RegExp}
+     */
+    protected get endverbatimTagRegExp(): RegExp {
+        if (!this._endverbatimTagRegExp) {
+            this._endverbatimTagRegExp = new RegExp(
+                '(' + this.options.tag_block[0] + ')(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)' +
+                '(\\s*)(endverbatim)(\\s*)' +
+                '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
+            );
+        }
+
+        return this._endverbatimTagRegExp;
+    }
+
+    /**
+     * Return the regular expression used to match an operator.
+     *
+     * @return {RegExp}
+     */
+    protected get operatorRegExp(): RegExp {
+        if (!this._operatorRegExp) {
+            let operators = Array.from([
+                '=',
+                ...this.operators
+            ]);
+
+            operators.sort(function (a, b) {
+                return a.length > b.length ? -1 : 1;
+            });
+
+            let patterns: Array<string> = [];
+
+            for (let operator of operators) {
+                let length: number = operator.length;
+                let pattern: string = operator.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+                // an operator that ends with a character must be followed by a whitespace or an opening parenthesis
+                if (new RegExp('[A-Za-z]').test(operator[length - 1])) {
+                    pattern += '(?=[\\s(])';
+                }
+
+                // a space within an operator can be any amount of whitespaces
+                pattern = pattern.replace(/\s+/, '\\s+');
+
+                patterns.push(pattern);
+            }
+
+            let pattern: string = `^(${patterns.join('|')})`;
+
+            this._operatorRegExp = new RegExp(pattern);
+        }
+
+        return this._operatorRegExp;
     }
 
     public tokenize(source: string): Token[] {
@@ -173,11 +292,13 @@ export class Lexer {
         // find all token starts in one go
         let match: RegExpExecArray;
 
-        while ((match = this.getRegexes().tag_start.exec(this.source)) !== null) {
+        while ((match = this.tagStartRegExp.exec(this.source)) !== null) {
             this.positions.push(match);
         }
 
         while (this.cursor < this.end) {
+            console.warn('HERE WE GO', this.cursor, this.end, this.tokens);
+
             // dispatch to the lexing functions depending on the current state
             switch (this.state) {
                 case LexerState.DATA:
@@ -258,7 +379,7 @@ export class Lexer {
             case this.options.tag_block[0]:
                 let match: RegExpExecArray;
 
-                if ((match = this.getRegexes().verbatim_tag_end.exec(this.source.substring(this.cursor))) !== null) {
+                if ((match = this.verbatimTagEndRegExp.exec(this.source.substring(this.cursor))) !== null) {
                     this.currentVarBlockLine = this.lineno;
                     this.currentVarBlockColumn = this.columnno;
 
@@ -298,7 +419,7 @@ export class Lexer {
         let code: string = this.source.substring(this.cursor);
         let match: RegExpExecArray;
 
-        if ((this.brackets.length < 1) && ((match = this.getRegexes().block_end.exec(code)) !== null)) {
+        if ((this.brackets.length < 1) && ((match = this.blockEndRegExp.exec(code)) !== null)) {
             let tag = match[2];
             let modifier = match[1];
 
@@ -317,7 +438,7 @@ export class Lexer {
 
         let match: RegExpExecArray;
 
-        if ((this.brackets.length < 1) && ((match = this.getRegexes().var_end.exec(this.source.substring(this.cursor))) !== null)) {
+        if ((this.brackets.length < 1) && ((match = this.variableEndRegExp.exec(this.source.substring(this.cursor))) !== null)) {
             this.pushWhitespaceTrimToken(match[1]);
             this.pushToken(TokenType.VARIABLE_END, match[2]);
             this.moveCursor(match[0]);
@@ -331,7 +452,7 @@ export class Lexer {
         let match: RegExpExecArray;
         let candidate: string = this.source.substring(this.cursor);
 
-        if ((match = this.getRegexes().whitespace.exec(candidate)) !== null) {
+        if ((match = whitespaceRegExp.exec(candidate)) !== null) {
             let content = match[0];
 
             this.pushToken(TokenType.WHITESPACE, content);
@@ -340,21 +461,22 @@ export class Lexer {
     }
 
     protected lexExpression() {
+
+        console.warn('LEX EXPR', this.state);
+
         this.lexWhitespace();
 
         let match: RegExpExecArray;
         let candidate: string = this.source.substring(this.cursor);
-        let punctuationCandidate: string;
-
-        punctuationCandidate = candidate.substr(0, 1);
+        let singleCharacterCandidate: string = candidate.substr(0, 1);
 
         // operator
-        if ((match = this.getRegexes().operator.exec(candidate)) !== null) {
+        if ((match = this.operatorRegExp.exec(candidate)) !== null) {
             this.pushToken(TokenType.OPERATOR, match[0]);
             this.moveCursor(match[0]);
         }
         // name
-        else if ((match = Lexer.REGEX_NAME.exec(candidate)) !== null) {
+        else if ((match = nameRegExp.exec(candidate)) !== null) {
             let content = match[0];
 
             if (this.state === LexerState.BLOCK) {
@@ -365,45 +487,52 @@ export class Lexer {
             this.moveCursor(content);
         }
         // number
-        else if ((match = Lexer.REGEX_NUMBER.exec(candidate)) !== null) {
+        else if ((match = numberRegExp.exec(candidate)) !== null) {
             this.pushToken(TokenType.NUMBER, match[0]);
             this.moveCursor(match[0]);
         }
+        // opening bracket
+        else if (openingBracketRegExp.test(singleCharacterCandidate)) {
+            this.brackets.push({
+                value: singleCharacterCandidate,
+                line: this.lineno,
+                column: this.columnno
+            });
+
+            this.pushToken(TokenType.OPENING_BRACKET, singleCharacterCandidate);
+
+            this.moveCursor(singleCharacterCandidate);
+        }
+        // closing bracket
+        else if (closingBracketRegExp.test(singleCharacterCandidate)) {
+            if (this.brackets.length < 1) {
+                throw new SyntaxError(`Unexpected "${singleCharacterCandidate}".`, this.lineno, this.columnno);
+            }
+
+            let bracket = this.brackets.pop();
+
+            let expect = bracket.value
+                .replace('(', ')')
+                .replace('[', ']')
+                .replace('{', '}')
+            ;
+
+            if (singleCharacterCandidate != expect) {
+                throw new SyntaxError(`Unclosed bracket "${bracket.value}" opened at {${bracket.line}:${bracket.column}}.`, this.lineno, this.columnno);
+            }
+
+            this.pushToken(TokenType.CLOSING_BRACKET, singleCharacterCandidate);
+
+            this.moveCursor(singleCharacterCandidate);
+        }
         // punctuation
-        else if (Lexer.PUNCTUATION.indexOf(punctuationCandidate) > -1) {
-            // opening bracket
-            if ('([{'.indexOf(punctuationCandidate) > -1) {
-                this.brackets.push({
-                    value: punctuationCandidate,
-                    line: this.lineno,
-                    column: this.columnno
-                });
-            }
-            // closing bracket
-            else if (')]}'.indexOf(punctuationCandidate) > -1) {
-                if (this.brackets.length < 1) {
-                    throw new SyntaxError(`Unexpected "${punctuationCandidate}".`, this.lineno, this.columnno);
-                }
+        else if (punctuationRegExp.test(singleCharacterCandidate)) {
+            this.pushToken(TokenType.PUNCTUATION, singleCharacterCandidate);
 
-                let bracket = this.brackets.pop();
-
-                let expect = bracket.value
-                    .replace('(', ')')
-                    .replace('[', ']')
-                    .replace('{', '}')
-                ;
-
-                if (punctuationCandidate != expect) {
-                    throw new SyntaxError(`Unclosed bracket "${bracket.value}" opened at {${bracket.line}:${bracket.column}}.`, this.lineno, this.columnno);
-                }
-            }
-
-            this.pushToken(TokenType.PUNCTUATION, punctuationCandidate);
-
-            this.moveCursor(punctuationCandidate);
+            this.moveCursor(singleCharacterCandidate);
         }
         // string
-        else if ((match = Lexer.REGEX_STRING.exec(candidate)) !== null) {
+        else if ((match = stringRegExp.exec(candidate)) !== null) {
             let openingBracket = match[1] || match[4];
             let content = match[2] || match[5];
             let closingBracket = match[3] || match[6];
@@ -433,6 +562,8 @@ export class Lexer {
         }
         // unlexable
         else {
+            console.warn(this.source, this.tokens, candidate, this.cursor, this.end);
+
             throw new SyntaxError(`Unexpected character "${candidate}".`, this.lineno, this.columnno);
         }
     }
@@ -440,7 +571,7 @@ export class Lexer {
     protected lexVerbatim() {
         let candidate: string = this.source.substring(this.cursor);
 
-        let match: RegExpExecArray = this.getRegexes().endverbatim_tag.exec(candidate);
+        let match: RegExpExecArray = this.endverbatimTagRegExp.exec(candidate);
 
         if (!match) {
             this.moveCoordinates(candidate);
@@ -467,7 +598,7 @@ export class Lexer {
         this.lexWhitespace();
 
         let candidate: string = this.source.substring(this.cursor);
-        let match = this.getRegexes().comment_end.exec(candidate);
+        let match = this.commentEndRegExp.exec(candidate);
 
         if (!match) {
             this.moveCoordinates(candidate);
@@ -491,7 +622,7 @@ export class Lexer {
     protected lexString() {
         let match: RegExpExecArray;
 
-        if ((match = this.getRegexes().interpolation_start.exec(this.source.substring(this.cursor))) !== null) {
+        if ((match = this.interpolationStartRegExp.exec(this.source.substring(this.cursor))) !== null) {
             let tag = match[1];
             let whitespace = match[2];
 
@@ -521,7 +652,7 @@ export class Lexer {
         let match: RegExpExecArray;
         let bracket = this.brackets[this.brackets.length - 1];
 
-        if (this.options.interpolation[0] === bracket.value && (match = this.getRegexes().interpolation_end.exec(this.source.substring(this.cursor))) !== null) {
+        if (this.options.interpolation[0] === bracket.value && (match = this.interpolationEndRegExp.exec(this.source.substring(this.cursor))) !== null) {
             let tag = match[2];
             let whitespace = match[1] || '';
 
@@ -551,38 +682,6 @@ export class Lexer {
             this.lineno += lineCount;
             this.columnno = 1 + lines[lineCount].length;
         }
-    }
-
-    protected getOperatorRegEx() {
-        let operators = Array.from([
-            '=',
-            ...this.operators
-        ]);
-
-        operators.sort(function (a, b) {
-            return a.length > b.length ? -1 : 1;
-        });
-
-        let patterns: Array<string> = [];
-
-        for (let operator of operators) {
-            let length: number = operator.length;
-            let pattern: string = operator.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
-
-            // an operator that ends with a character must be followed by a whitespace or an opening parenthesis
-            if (new RegExp('[A-Za-z]').test(operator[length - 1])) {
-                pattern += '(?=[\\s(])';
-            }
-
-            // a space within an operator can be any amount of whitespaces
-            pattern = pattern.replace(/\s+/, '\\s+');
-
-            patterns.push(pattern);
-        }
-
-        let pattern:string = `^(${patterns.join('|')})`;
-
-        return new RegExp(pattern);
     }
 
     protected pushToken(type: TokenType, content: any) {

@@ -15,7 +15,9 @@ export enum TokenType {
     COMMENT_START = 'COMMENT_START',
     COMMENT_END = 'COMMENT_END',
     WHITESPACE = 'WHITESPACE',
+    OPENING_BRACKET = 'OPENING BRACKET',
     OPENING_QUOTE = 'OPENING_QUOTE',
+    CLOSING_BRACKET = 'CLOSING_BRACKET',
     CLOSING_QUOTE = 'CLOSING_QUOTE',
     WHITESPACE_CONTROL_MODIFIER_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_TRIMMING',
     WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING'
@@ -23,7 +25,6 @@ export enum TokenType {
 
 export class Token {
     readonly type: TokenType;
-    readonly tag: string;
     readonly content: string;
     readonly lineno: number;
     readonly columnno: number;
@@ -44,7 +45,7 @@ export class Token {
      * @returns {string} The string representation
      */
     static typeToString(type: TokenType, short: boolean = false) {
-        if (TokenType[type]) {
+        if (type in TokenType) {
             return short ? type : 'TokenType.' + type;
         } else {
             throw new Error(`Token of type "${type}" does not exist.`);
@@ -92,8 +93,12 @@ export class Token {
                 return 'end of comment statement';
             case TokenType.WHITESPACE:
                 return 'whitespace';
+            case TokenType.OPENING_BRACKET:
+                return 'opening bracket';
             case TokenType.OPENING_QUOTE:
                 return 'opening quote';
+            case TokenType.CLOSING_BRACKET:
+                return 'closing bracket';
             case TokenType.CLOSING_QUOTE:
                 return 'closing quote';
             case TokenType.WHITESPACE_CONTROL_MODIFIER_TRIMMING:
