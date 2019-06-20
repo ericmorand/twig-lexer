@@ -15,9 +15,7 @@ export enum TokenType {
     COMMENT_START = 'COMMENT_START',
     COMMENT_END = 'COMMENT_END',
     WHITESPACE = 'WHITESPACE',
-    OPENING_BRACKET = 'OPENING BRACKET',
     OPENING_QUOTE = 'OPENING_QUOTE',
-    CLOSING_BRACKET = 'CLOSING_BRACKET',
     CLOSING_QUOTE = 'CLOSING_QUOTE',
     WHITESPACE_CONTROL_MODIFIER_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_TRIMMING',
     WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING'
@@ -25,13 +23,13 @@ export enum TokenType {
 
 export class Token {
     readonly type: TokenType;
-    readonly content: string;
+    readonly value: string;
     readonly lineno: number;
     readonly columnno: number;
 
-    constructor(type: TokenType, content: string, lineno: number, columnno: number) {
+    constructor(type: TokenType, value: string, lineno: number, columnno: number) {
         this.type = type;
-        this.content = content;
+        this.value = value;
         this.lineno = lineno;
         this.columnno = columnno;
     }
@@ -93,12 +91,8 @@ export class Token {
                 return 'end of comment statement';
             case TokenType.WHITESPACE:
                 return 'whitespace';
-            case TokenType.OPENING_BRACKET:
-                return 'opening bracket';
             case TokenType.OPENING_QUOTE:
                 return 'opening quote';
-            case TokenType.CLOSING_BRACKET:
-                return 'closing bracket';
             case TokenType.CLOSING_QUOTE:
                 return 'closing quote';
             case TokenType.WHITESPACE_CONTROL_MODIFIER_TRIMMING:
@@ -114,11 +108,11 @@ export class Token {
      * Tests the current token for a type and/or a content.
      *
      * @param {TokenType} type
-     * @param {string|string[]|number} contents
+     * @param {string|string[]|number} values
      * @returns {boolean}
      */
-    public test(type: TokenType, contents: string | string[] | number = null) {
-        return (this.type === type) && (contents === null || (Array.isArray(contents) && contents.includes(this.content)) || this.content == contents);
+    public test(type: TokenType, values: string | string[] | number = null) {
+        return (this.type === type) && (values === null || (Array.isArray(values) && values.includes(this.value)) || this.value == values);
     }
 
     /**
@@ -139,12 +133,12 @@ export class Token {
         return this.type;
     }
 
-    public getContent() {
-        return this.content;
+    public getValue() {
+        return this.value;
     }
 
     public toString() {
-        return `${Token.typeToString(this.type, true)}(${this.content ? this.content : ''})`;
+        return `${Token.typeToString(this.type, true)}(${this.value ? this.value : ''})`;
     }
 
     /**
@@ -153,6 +147,6 @@ export class Token {
      * @return string
      */
     public serialize() {
-        return this.content;
+        return this.value;
     }
 }
