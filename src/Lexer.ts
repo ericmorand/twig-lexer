@@ -3,6 +3,7 @@ import {SyntaxError} from "./SyntaxError";
 
 export enum LexerState {
     BLOCK = 'BLOCK',
+    COMMENT = 'COMMENT',
     DATA = 'DATA',
     DOUBLE_QUOTED_STRING = 'DOUBLE_QUOTED_STRING',
     INTERPOLATION = 'INTERPOLATION',
@@ -216,6 +217,9 @@ export class Lexer {
                 case LexerState.BLOCK:
                     this.lexBlock();
                     break;
+                case LexerState.COMMENT:
+                    this.lexComment();
+                    break;
                 case LexerState.DATA:
                     this.lexData();
                     break;
@@ -267,7 +271,7 @@ export class Lexer {
 
                     this.pushToken(TokenType.COMMENT_START, tag);
                     this.pushWhitespaceTrimToken(modifier);
-                    this.lexComment();
+                    this.pushState(LexerState.COMMENT);
                     break;
                 case this.blockPair[0]:
                     let match: RegExpExecArray;
@@ -459,6 +463,7 @@ export class Lexer {
         this.lexWhitespace();
         this.pushWhitespaceTrimToken(match[2]);
         this.pushToken(TokenType.COMMENT_END, match[3]);
+        this.popState();
     }
 
     protected lexDoubleQuotedString() {
