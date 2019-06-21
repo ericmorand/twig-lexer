@@ -1,24 +1,24 @@
 export enum TokenType {
-    EOF = 'EOF',
-    TEXT = 'TEXT',
-    BLOCK_START = 'BLOCK_START',
     BLOCK_END = 'BLOCK_END',
-    VARIABLE_START = 'VARIABLE_START',
-    VARIABLE_END = 'VARIABLE_END',
-    NAME = 'NAME',
-    NUMBER = 'NUMBER',
-    STRING = 'STRING',
-    OPERATOR = 'OPERATOR',
-    PUNCTUATION = 'PUNCTUATION',
+    BLOCK_START = 'BLOCK_START',
+    CLOSING_QUOTE = 'CLOSING_QUOTE',
+    COMMENT_END = 'COMMENT_END',
+    COMMENT_START = 'COMMENT_START',
+    EOF = 'EOF',
     INTERPOLATION_START = 'INTERPOLATION_START',
     INTERPOLATION_END = 'INTERPOLATION_END',
-    COMMENT_START = 'COMMENT_START',
-    COMMENT_END = 'COMMENT_END',
-    WHITESPACE = 'WHITESPACE',
+    NAME = 'NAME',
+    NUMBER = 'NUMBER',
     OPENING_QUOTE = 'OPENING_QUOTE',
-    CLOSING_QUOTE = 'CLOSING_QUOTE',
-    WHITESPACE_CONTROL_MODIFIER_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_TRIMMING',
-    WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING'
+    OPERATOR = 'OPERATOR',
+    PUNCTUATION = 'PUNCTUATION',
+    STRING = 'STRING',
+    TEXT = 'TEXT',
+    VARIABLE_END = 'VARIABLE_END',
+    VARIABLE_START = 'VARIABLE_START',
+    WHITESPACE = 'WHITESPACE',
+    WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING',
+    WHITESPACE_CONTROL_MODIFIER_TRIMMING = 'WHITESPACE_CONTROL_MODIFIER_TRIMMING'
 }
 
 export class Token {
@@ -82,9 +82,9 @@ export class Token {
             case TokenType.PUNCTUATION:
                 return 'punctuation';
             case TokenType.INTERPOLATION_START:
-                return 'begin of string interpolation';
+                return 'begin of string interpolation_pair';
             case TokenType.INTERPOLATION_END:
-                return 'end of string interpolation';
+                return 'end of string interpolation_pair';
             case TokenType.COMMENT_START:
                 return 'begin of comment statement';
             case TokenType.COMMENT_END:

@@ -114,7 +114,7 @@ tape('Lexer', (test) => {
                 test.end();
             });
 
-            test.test('supports string with interpolation', (test) => {
+            test.test('supports string with interpolation_pair', (test) => {
                 let lexer = createLexer();
                 let tokens = lexer.tokenize('{{foo["#{bar}"]}}');
 
@@ -298,7 +298,7 @@ tape('Lexer', (test) => {
         });
 
         test.test('with whitespaces', (test) => {
-            let source = `{{ 
+            let source = `{{
 bla }}`;
 
             let lexer = createLexer();
@@ -306,7 +306,7 @@ bla }}`;
 
             testTokens(test, tokens, [
                 [TokenType.VARIABLE_START, '{{', 1, 1],
-                [TokenType.WHITESPACE, ' \n', 1, 3],
+                [TokenType.WHITESPACE, '\n', 1, 3],
                 [TokenType.NAME, 'bla', 2, 1],
                 [TokenType.WHITESPACE, ' ', 2, 4],
                 [TokenType.VARIABLE_END, '}}', 2, 5],
@@ -412,16 +412,16 @@ bla }}`;
             test.end();
         });
 
-        // test.test('named as an operator ending with a letter and not followed by either a space or an opening parenthesis', (test) => {
-        //     let lexer = createLexer();
-        //     let tokens = lexer.tokenize('{{in}}');
-        //
-        //     testTokens(test, [tokens[1]], [
-        //         [TokenType.NAME, 'in', 1, 3]
-        //     ]);
-        //
-        //     test.end();
-        // });
+        test.test('named as an operator ending with a letter and not followed by either a space or an opening parenthesis', (test) => {
+            let lexer = createLexer();
+            let tokens = lexer.tokenize('{{in}}');
+
+            testTokens(test, [tokens[1]], [
+                [TokenType.NAME, 'in', 1, 3]
+            ]);
+
+            test.end();
+        });
 
         test.end();
     });
@@ -497,6 +497,8 @@ bla
         test.test('block end consumes next line separator', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('{%rn%}\r\n{%r%}\r{%n%}\n');
+
+            console.warn(tokens);
 
             testTokens(test, tokens, [
                 [TokenType.BLOCK_START, '{%', 1, 1],
@@ -579,7 +581,7 @@ bla
             test.end();
         });
 
-        test.test('with interpolation', (test) => {
+        test.test('with interpolation_pair', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('foo {{ "bar #{ baz + 1 }" }}');
 
@@ -607,7 +609,7 @@ bla
             test.end();
         });
 
-        test.test('with escaped interpolation', (test) => {
+        test.test('with escaped interpolation_pair', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('{{ "bar \\#{baz+1}" }}');
 
@@ -661,7 +663,7 @@ bla
             test.end();
         });
 
-        test.test('with nested interpolation', (test) => {
+        test.test('with nested interpolation_pair', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('{{ "bar #{ "foo#{bar}" }" }}');
 
@@ -689,7 +691,7 @@ bla
             test.end();
         });
 
-        test.test('with nested interpolation in block', (test) => {
+        test.test('with nested interpolation_pair in block', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('{% foo "bar #{ "foo#{bar}" }" %}');
 
@@ -750,7 +752,7 @@ bla
             test.end();
         });
 
-        test.test('delimited by single quotes with interpolation', (test) => {
+        test.test('delimited by single quotes with interpolation_pair', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('{{\'foo#{bar}\'}}');
 
@@ -851,6 +853,8 @@ bla
         test.test('at start and end of a template', (test) => {
             let lexer = createLexer();
             let tokens = lexer.tokenize('foo {{bar}} bar');
+
+            console.warn(tokens);
 
             testTokens(test, tokens, [
                 [TokenType.TEXT, 'foo ', 1, 1],

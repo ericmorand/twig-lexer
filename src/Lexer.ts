@@ -2,21 +2,13 @@ import {Token, TokenType} from "./Token";
 import {SyntaxError} from "./SyntaxError";
 
 export enum LexerState {
-    DATA = 'DATA',
     BLOCK = 'BLOCK',
-    VARIABLE = 'VARIABLE',
+    DATA = 'DATA',
     DOUBLE_QUOTED_STRING = 'DOUBLE_QUOTED_STRING',
-    INTERPOLATION = 'INTERPOLATION'
+    INTERPOLATION = 'INTERPOLATION',
+    VARIABLE = 'VARIABLE',
+    VERBATIM = 'VERBATIM'
 }
-
-export type LexerOptions = {
-    interpolation: [string, string],
-    tag_block: [string, string],
-    tag_comment: [string, string]
-    tag_variable: [string, string],
-    whitespace_trim: string,
-    line_whitespace_trim: string
-};
 
 const escapeRegularExpressionPattern = (pattern: string) => {
     return pattern.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
@@ -53,23 +45,20 @@ type LexerScope = {
 export class Lexer {
     private _interpolationStartRegExp: RegExp;
     private _interpolationEndRegExp: RegExp;
-    private _tagStartRegExp: RegExp;
+    private _statementStartRegExp: RegExp;
     private _variableEndRegExp: RegExp;
     private _blockEndRegExp: RegExp;
     private _commentEndRegExp: RegExp;
-    private _verbatimTagEndRegExp: RegExp;
+    private _verbatimTagRegExp: RegExp;
     private _endverbatimTagRegExp: RegExp;
     private _operatorRegExp: RegExp;
 
     private currentVarBlockLine: number;
     private currentVarBlockColumn: number;
-    private currentBlockName: string;
     private cursor: number;
     private end: number;
-    private lineno: number; // 1-based
-    private columnno: number; // 1-based
-    private position: number;
-    private positions: RegExpExecArray[];
+    private line: number; // 1-based
+    private column: number; // 1-based
     private source: string;
     private state: LexerState;
     private states: LexerState[];
@@ -77,14 +66,19 @@ export class Lexer {
     private scopes: LexerScope[];
     private tokens: Token[];
 
-    protected options: LexerOptions;
     protected operators: string[];
+
+    protected blockPair: [string, string];
+    protected commentPair: [string, string];
+    protected interpolationPair: [string, string];
+    protected variablePair: [string, string];
+
+    protected whitespaceTrim: string;
+    protected lineWhitespaceTrim: string;
 
     constructor() {
         this.operators = [
             '=',
-            '-',
-            '+',
             'or',
             'and',
             'b-or',
@@ -116,137 +110,13 @@ export class Lexer {
             '??'
         ];
 
-        this.options = {
-            interpolation: ['#{', '}'],
-            tag_block: ['{%', '%}'],
-            tag_comment: ['{#', '#}'],
-            tag_variable: ['{{', '}}'],
-            whitespace_trim: '-',
-            line_whitespace_trim: '~'
-        };
-    }
+        this.blockPair = ['{%', '%}'];
+        this.commentPair = ['{#', '#}'];
+        this.interpolationPair = ['#{', '}'];
+        this.variablePair = ['{{', '}}'];
 
-    /**
-     * Return the regular expression used to match an "interpolation start" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get interpolationStartRegExp(): RegExp {
-        if (!this._interpolationStartRegExp) {
-            this._interpolationStartRegExp = new RegExp(
-                '^(' + this.options.interpolation[0] + ')(\\s*)'
-            );
-        }
-
-        return this._interpolationStartRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match an "interpolation end" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get interpolationEndRegExp(): RegExp {
-        if (!this._interpolationEndRegExp) {
-            this._interpolationEndRegExp = new RegExp(
-                '^(\\s*)(' + this.options.interpolation[1] + ')'
-            );
-        }
-
-        return this._interpolationEndRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a tag start.
-     *
-     * @return {RegExp}
-     */
-    protected get tagStartRegExp(): RegExp {
-        if (!this._tagStartRegExp) {
-            this._tagStartRegExp = new RegExp(
-                '(' + [this.options.tag_variable[0], this.options.tag_block[0], this.options.tag_comment[0]].join('|') + ')' +
-                '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + ')?', 'g'
-            );
-        }
-
-        return this._tagStartRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a "variable end" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get variableEndRegExp(): RegExp {
-        if (!this._variableEndRegExp) {
-            this._variableEndRegExp = new RegExp(
-                '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_variable[1] + ')'
-            );
-        }
-
-        return this._variableEndRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a "block end" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get blockEndRegExp(): RegExp {
-        if (!this._blockEndRegExp) {
-            this._blockEndRegExp = new RegExp(
-                '^(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + '(?:' + lineSeparators.join('|') + ')?)'
-            );
-        }
-
-        return this._blockEndRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a "comment end" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get commentEndRegExp(): RegExp {
-        if (!this._commentEndRegExp) {
-            this._commentEndRegExp = new RegExp(
-                '(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_comment[1] + '(?:' + lineSeparators.join('|') + ')?)'
-            );
-        }
-
-        return this._commentEndRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a "verbatim tag" end.
-     *
-     * @return {RegExp}
-     */
-    protected get verbatimTagEndRegExp(): RegExp {
-        if (!this._verbatimTagEndRegExp) {
-            this._verbatimTagEndRegExp = new RegExp(
-                '^(\\s*)(verbatim)(\\s*)(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
-            );
-        }
-
-        return this._verbatimTagEndRegExp;
-    }
-
-    /**
-     * Return the regular expression used to match a "endverbatim" tag.
-     *
-     * @return {RegExp}
-     */
-    protected get endverbatimTagRegExp(): RegExp {
-        if (!this._endverbatimTagRegExp) {
-            this._endverbatimTagRegExp = new RegExp(
-                '(' + this.options.tag_block[0] + ')(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)' +
-                '(\\s*)(endverbatim)(\\s*)' +
-                '(' + this.options.whitespace_trim + '|' + this.options.line_whitespace_trim + '?)(' + this.options.tag_block[1] + ')'
-            );
-        }
-
-        return this._endverbatimTagRegExp;
+        this.whitespaceTrim = '-';
+        this.lineWhitespaceTrim = '~';
     }
 
     /**
@@ -294,33 +164,60 @@ export class Lexer {
         this.source = source;
         this.cursor = 0;
         this.end = this.source.length;
-        this.lineno = 1;
-        this.columnno = 1;
+        this.line = 1;
+        this.column = 1;
         this.tokens = [];
         this.state = LexerState.DATA as any; // see https://github.com/Microsoft/TypeScript/issues/29204
         this.states = [];
+        this.scope = null;
         this.scopes = [];
-        this.position = -1;
-        this.positions = [];
 
-        // find all token starts in one go
-        let match: RegExpExecArray;
+        // init regular expressions
+        this._blockEndRegExp = new RegExp(
+            '^(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)(' + this.blockPair[1] + '(?:' + lineSeparators.join('|') + ')?)'
+        );
 
-        while ((match = this.tagStartRegExp.exec(this.source)) !== null) {
-            this.positions.push(match);
-        }
+        this._commentEndRegExp = new RegExp(
+            '(\\s*)(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)(' + this.commentPair[1] + '(?:' + lineSeparators.join('|') + ')?)'
+        );
+
+        this._variableEndRegExp = new RegExp(
+            '^(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)(' + this.variablePair[1] + ')'
+        );
+
+        this._verbatimTagRegExp = new RegExp(
+            '(' + this.blockPair[0] + ')(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)' +
+            '(\\s*)(verbatim)(\\s*)' +
+            '(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)(' + this.blockPair[1] + ')'
+        );
+
+        this._endverbatimTagRegExp = new RegExp(
+            '(' + this.blockPair[0] + ')(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)' +
+            '(\\s*)(endverbatim)(\\s*)' +
+            '(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + '?)(' + this.blockPair[1] + ')'
+        );
+
+        this._statementStartRegExp = new RegExp(
+            '(' + [this.variablePair[0], this.blockPair[0], this.commentPair[0]].join('|') + ')' +
+            '(' + this.whitespaceTrim + '|' + this.lineWhitespaceTrim + ')?'
+        );
+
+        this._interpolationStartRegExp = new RegExp(
+            '^(' + this.interpolationPair[0] + ')(\\s*)'
+        );
+
+        this._interpolationEndRegExp = new RegExp(
+            '^(\\s*)(' + this.interpolationPair[1] + ')'
+        );
 
         while (this.cursor < this.end) {
             // dispatch to the lexing functions depending on the current state
             switch (this.state) {
-                case LexerState.DATA:
-                    this.lexData();
-                    break;
                 case LexerState.BLOCK:
                     this.lexBlock();
                     break;
-                case LexerState.VARIABLE:
-                    this.lexVariable();
+                case LexerState.DATA:
+                    this.lexData();
                     break;
                 case LexerState.DOUBLE_QUOTED_STRING:
                     this.lexDoubleQuotedString();
@@ -328,98 +225,84 @@ export class Lexer {
                 case LexerState.INTERPOLATION:
                     this.lexInterpolation();
                     break;
+                case LexerState.VARIABLE:
+                    this.lexVariable();
+                    break;
+                case LexerState.VERBATIM:
+                    this.lexVerbatim();
+                    break;
             }
         }
 
         this.pushToken(TokenType.EOF, null);
 
         if (this.state == LexerState.VARIABLE) {
-            throw new SyntaxError(`Unexpected end of file: unclosed variable opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected end of file: unclosed variable opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.line, this.column);
         } else if (this.state == LexerState.BLOCK) {
-            throw new SyntaxError(`Unexpected end of file: unclosed block opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected end of file: unclosed block opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.line, this.column);
         } else if (this.scope) {
-            throw new SyntaxError(`Unexpected end of file: unclosed "${this.scope.value}" opened at {${this.scope.line}:${this.scope.column}}.`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected end of file: unclosed "${this.scope.value}" opened at {${this.scope.line}:${this.scope.column}}.`, this.line, this.column);
         }
 
         return this.tokens;
     }
 
     protected lexData() {
-        // if no matches are left we return the rest of the template as simple text token
-        if (this.position === (this.positions.length - 1)) {
-            let text = this.source.substring(this.cursor);
+        let data = this.source.substring(this.cursor);
 
-            this.pushToken(TokenType.TEXT, text);
-            this.moveCursor(text);
+        // look for the next statement
+        let match = this._statementStartRegExp.exec(data);
 
-            return;
-        }
+        // push the text
+        this.pushToken(TokenType.TEXT, match ? data.substr(0, match.index) : data);
 
-        // find the first token after the current cursor
-        let position: RegExpExecArray = this.positions[++this.position];
+        if (match) {
+            let tag: string = match[1];
+            let modifier: string = match[2];
 
-        while (position.index < this.cursor) {
-            if (this.position == (this.positions.length - 1)) {
-                return;
+            switch (tag) {
+                case this.commentPair[0]:
+                    this.currentVarBlockLine = this.line;
+                    this.currentVarBlockColumn = this.column;
+
+                    this.pushToken(TokenType.COMMENT_START, tag);
+                    this.pushWhitespaceTrimToken(modifier);
+                    this.lexComment();
+                    break;
+                case this.blockPair[0]:
+                    let match: RegExpExecArray;
+
+                    if ((match = this._verbatimTagRegExp.exec(this.source.substring(this.cursor))) !== null) {
+                        this.currentVarBlockLine = this.line;
+                        this.currentVarBlockColumn = this.column;
+
+                        this.pushToken(TokenType.BLOCK_START, match[1]);
+                        this.pushWhitespaceTrimToken(match[2]);
+                        this.pushToken(TokenType.WHITESPACE, match[3]);
+                        this.pushToken(TokenType.NAME, match[4]); // verbatim itself
+                        this.pushToken(TokenType.WHITESPACE, match[5]);
+                        this.pushWhitespaceTrimToken(match[6]);
+                        this.pushToken(TokenType.BLOCK_END, match[7]);
+                        this.pushState(LexerState.VERBATIM);
+                    } else {
+                        this.currentVarBlockLine = this.line;
+                        this.currentVarBlockColumn = this.column;
+
+                        this.pushToken(TokenType.BLOCK_START, tag);
+                        this.pushWhitespaceTrimToken(modifier);
+                        this.pushState(LexerState.BLOCK);
+                    }
+                    break;
+                case this.variablePair[0]:
+                    this.currentVarBlockLine = this.line;
+                    this.currentVarBlockColumn = this.column;
+
+                    this.pushToken(TokenType.VARIABLE_START, tag);
+                    this.pushWhitespaceTrimToken(modifier);
+                    this.pushState(LexerState.VARIABLE);
+
+                    break;
             }
-
-            position = this.positions[++this.position];
-        }
-
-        // push the template text first
-        let text: string = this.source.substr(this.cursor, position.index - this.cursor);
-
-        this.pushToken(TokenType.TEXT, text);
-        this.moveCursor(text);
-
-        let tag = position[1];
-        let modifier = position[2];
-
-        this.moveCursor(tag + (modifier ? modifier : ''));
-
-        switch (tag) {
-            case this.options.tag_comment[0]:
-                this.currentVarBlockLine = this.lineno;
-                this.currentVarBlockColumn = this.columnno;
-
-                this.pushToken(TokenType.COMMENT_START, tag);
-                this.pushWhitespaceTrimToken(modifier);
-                this.lexComment();
-                break;
-            case this.options.tag_block[0]:
-                let match: RegExpExecArray;
-
-                if ((match = this.verbatimTagEndRegExp.exec(this.source.substring(this.cursor))) !== null) {
-                    this.currentVarBlockLine = this.lineno;
-                    this.currentVarBlockColumn = this.columnno;
-
-                    this.pushToken(TokenType.BLOCK_START, tag);
-                    this.pushWhitespaceTrimToken(modifier);
-                    this.pushToken(TokenType.WHITESPACE, match[1]);
-                    this.pushToken(TokenType.NAME, match[2]); // verbatim itself
-                    this.pushToken(TokenType.WHITESPACE, match[3]);
-                    this.pushWhitespaceTrimToken(match[4]);
-                    this.pushToken(TokenType.BLOCK_END, match[5]);
-                    this.moveCursor(match[0]);
-                    this.lexVerbatim();
-                } else {
-                    this.currentVarBlockLine = this.lineno;
-                    this.currentVarBlockColumn = this.columnno;
-
-                    this.pushToken(TokenType.BLOCK_START, tag);
-                    this.pushWhitespaceTrimToken(modifier);
-                    this.pushState(LexerState.BLOCK);
-                }
-                break;
-            case this.options.tag_variable[0]:
-                this.currentVarBlockLine = this.lineno;
-                this.currentVarBlockColumn = this.columnno;
-
-                this.pushToken(TokenType.VARIABLE_START, tag);
-                this.pushWhitespaceTrimToken(modifier);
-                this.pushState(LexerState.VARIABLE);
-
-                break;
         }
     }
 
@@ -429,14 +312,12 @@ export class Lexer {
         let code: string = this.source.substring(this.cursor);
         let match: RegExpExecArray;
 
-        if (!this.scope && ((match = this.blockEndRegExp.exec(code)) !== null)) {
+        if (!this.scope && ((match = this._blockEndRegExp.exec(code)) !== null)) {
             let tag = match[2];
             let modifier = match[1];
 
             this.pushWhitespaceTrimToken(modifier);
             this.pushToken(TokenType.BLOCK_END, tag);
-            this.moveCursor(tag + (modifier ? modifier : ''));
-
             this.popState();
         } else {
             this.lexExpression();
@@ -448,10 +329,9 @@ export class Lexer {
 
         let match: RegExpExecArray;
 
-        if (!this.scope && ((match = this.variableEndRegExp.exec(this.source.substring(this.cursor))) !== null)) {
+        if (!this.scope && ((match = this._variableEndRegExp.exec(this.source.substring(this.cursor))) !== null)) {
             this.pushWhitespaceTrimToken(match[1]);
             this.pushToken(TokenType.VARIABLE_END, match[2]);
-            this.moveCursor(match[0]);
             this.popState();
         } else {
             this.lexExpression();
@@ -463,10 +343,7 @@ export class Lexer {
         let candidate: string = this.source.substring(this.cursor);
 
         if ((match = whitespaceRegExp.exec(candidate)) !== null) {
-            let content = match[0];
-
-            this.pushToken(TokenType.WHITESPACE, content);
-            this.moveCursor(content);
+            this.pushToken(TokenType.WHITESPACE, match[0]);
         }
     }
 
@@ -480,65 +357,50 @@ export class Lexer {
         // operator
         if ((match = this.operatorRegExp.exec(candidate)) !== null) {
             this.pushToken(TokenType.OPERATOR, match[0]);
-            this.moveCursor(match[0]);
         }
         // name
         else if ((match = nameRegExp.exec(candidate)) !== null) {
-            let content = match[0];
-
-            if (this.state === LexerState.BLOCK) {
-                this.currentBlockName = content;
-            }
-
-            this.pushToken(TokenType.NAME, content);
-            this.moveCursor(content);
+            this.pushToken(TokenType.NAME, match[0]);
         }
         // number
         else if ((match = numberRegExp.exec(candidate)) !== null) {
             this.pushToken(TokenType.NUMBER, match[0]);
-            this.moveCursor(match[0]);
         }
         // opening bracket
         else if (openingBracketRegExp.test(singleCharacterCandidate)) {
             this.pushScope(singleCharacterCandidate);
             this.pushToken(TokenType.PUNCTUATION, singleCharacterCandidate);
-            this.moveCursor(singleCharacterCandidate);
         }
         // closing bracket
         else if (closingBracketRegExp.test(singleCharacterCandidate)) {
             if (!this.scope) {
-                throw new SyntaxError(`Unexpected "${singleCharacterCandidate}".`, this.lineno, this.columnno);
+                throw new SyntaxError(`Unexpected "${singleCharacterCandidate}".`, this.line, this.column);
             }
 
             if (singleCharacterCandidate !== this.scope.expected) {
-                throw new SyntaxError(`Unclosed bracket "${this.scope.value}" opened at {${this.scope.line}:${this.scope.column}}.`, this.lineno, this.columnno);
+                throw new SyntaxError(`Unclosed bracket "${this.scope.value}" opened at {${this.scope.line}:${this.scope.column}}.`, this.line, this.column);
             }
 
-            this.popScope();
             this.pushToken(TokenType.PUNCTUATION, singleCharacterCandidate);
-            this.moveCursor(singleCharacterCandidate);
+            this.popScope();
         }
         // punctuation
         else if (punctuationRegExp.test(singleCharacterCandidate)) {
             this.pushToken(TokenType.PUNCTUATION, singleCharacterCandidate);
-            this.moveCursor(singleCharacterCandidate);
         }
         // string
         else if ((match = stringRegExp.exec(candidate)) !== null) {
             let openingBracket = match[1] || match[4];
-            let content = match[2] || match[5];
+            let value = match[2] || match[5];
             let closingBracket = match[3] || match[6];
 
             this.pushToken(TokenType.OPENING_QUOTE, openingBracket);
-            this.moveCursor(openingBracket);
 
-            if (content !== undefined) {
-                this.pushToken(TokenType.STRING, content);
-                this.moveCursor(content);
+            if (value !== undefined) {
+                this.pushToken(TokenType.STRING, value);
             }
 
             this.pushToken(TokenType.CLOSING_QUOTE, closingBracket);
-            this.moveCursor(closingBracket);
         }
         // double quoted string
         else if ((match = doubleQuotedStringDelimiterRegExp.exec(candidate)) !== null) {
@@ -547,23 +409,22 @@ export class Lexer {
             this.pushScope(value, value);
             this.pushToken(TokenType.OPENING_QUOTE, value);
             this.pushState(LexerState.DOUBLE_QUOTED_STRING);
-            this.moveCursor(value);
         }
         // unlexable
         else if (this.cursor < this.end) {
-            throw new SyntaxError(`Unexpected character "${candidate}".`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected character "${candidate}".`, this.line, this.column);
         }
     }
 
     protected lexVerbatim() {
         let candidate: string = this.source.substring(this.cursor);
 
-        let match: RegExpExecArray = this.endverbatimTagRegExp.exec(candidate);
+        let match: RegExpExecArray = this._endverbatimTagRegExp.exec(candidate);
 
         if (!match) {
             this.moveCoordinates(candidate);
 
-            throw new SyntaxError(`Unexpected end of file: unclosed verbatim opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected end of file: unclosed verbatim opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.line, this.column);
         }
 
         let text = this.source.substr(this.cursor, match.index);
@@ -577,55 +438,43 @@ export class Lexer {
         this.pushToken(TokenType.WHITESPACE, match[5]);
         this.pushWhitespaceTrimToken(match[6]);
         this.pushToken(TokenType.BLOCK_END, match[7]);
-
-        this.moveCursor(text + match[0]);
+        this.popState();
     }
 
     protected lexComment() {
         this.lexWhitespace();
 
         let candidate: string = this.source.substring(this.cursor);
-        let match = this.commentEndRegExp.exec(candidate);
+        let match = this._commentEndRegExp.exec(candidate);
 
         if (!match) {
             this.moveCoordinates(candidate);
 
-            throw new SyntaxError(`Unexpected end of file: unclosed comment opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.lineno, this.columnno);
+            throw new SyntaxError(`Unexpected end of file: unclosed comment opened at {${this.currentVarBlockLine}:${this.currentVarBlockColumn}}.`, this.line, this.column);
         }
 
         let text = this.source.substr(this.cursor, match.index);
 
         this.pushToken(TokenType.TEXT, text);
-        this.moveCursor(text);
-
         this.lexWhitespace();
-
         this.pushWhitespaceTrimToken(match[2]);
-
         this.pushToken(TokenType.COMMENT_END, match[3]);
-        this.moveCursor(match[3]);
     }
 
     protected lexDoubleQuotedString() {
         let match: RegExpExecArray;
 
-        if ((match = this.interpolationStartRegExp.exec(this.source.substring(this.cursor))) !== null) {
+        if ((match = this._interpolationStartRegExp.exec(this.source.substring(this.cursor))) !== null) {
             let tag = match[1];
-            let whitespace = match[2];
 
-            this.pushScope(tag, this.options.interpolation[1]);
             this.pushToken(TokenType.INTERPOLATION_START, tag);
-            this.pushToken(TokenType.WHITESPACE, whitespace);
-            this.moveCursor(tag + (whitespace ? whitespace : ''));
+            this.pushToken(TokenType.WHITESPACE, match[2]);
+            this.pushScope(tag, this.interpolationPair[1]);
             this.pushState(LexerState.INTERPOLATION);
         } else if (((match = doubleQuotedStringPartRegExp.exec(this.source.substring(this.cursor))) !== null) && (match[0].length > 0)) {
             this.pushToken(TokenType.STRING, match[0]);
-            this.moveCursor(match[0]);
         } else {
-            let value = this.scope.value;
-
-            this.pushToken(TokenType.CLOSING_QUOTE, value);
-            this.moveCursor(value);
+            this.pushToken(TokenType.CLOSING_QUOTE, this.scope.value);
             this.popScope();
             this.popState();
         }
@@ -634,64 +483,50 @@ export class Lexer {
     protected lexInterpolation() {
         let match: RegExpExecArray;
 
-        if (this.scope.value === this.options.interpolation[0] && (match = this.interpolationEndRegExp.exec(this.source.substring(this.cursor))) !== null) {
+        if (this.scope.value === this.interpolationPair[0] && (match = this._interpolationEndRegExp.exec(this.source.substring(this.cursor))) !== null) {
             let tag = match[2];
             let whitespace = match[1] || '';
 
-            this.popScope();
-
             this.pushToken(TokenType.WHITESPACE, whitespace);
             this.pushToken(TokenType.INTERPOLATION_END, tag);
-            this.moveCursor(tag + whitespace);
+            this.popScope();
             this.popState();
         } else {
             this.lexExpression();
         }
     }
 
-    protected moveCursor(text: string) {
-        this.cursor += text.length;
-    }
-
     protected moveCoordinates(text: string) {
-        this.columnno += text.length;
+        this.cursor += text.length;
+        this.column += text.length;
 
         let lines = text.split(/\r\n|\r|\n/);
 
         let lineCount = lines.length - 1;
 
         if (lineCount > 0) {
-            this.lineno += lineCount;
-            this.columnno = 1 + lines[lineCount].length;
+            this.line += lineCount;
+            this.column = 1 + lines[lineCount].length;
         }
     }
 
-    protected pushToken(type: TokenType, content: any) {
-        if ((type === TokenType.TEXT || type === TokenType.WHITESPACE) && (content.length < 1)) {
+    protected pushToken(type: TokenType, value: any) {
+        if ((type === TokenType.TEXT || type === TokenType.WHITESPACE) && (value.length < 1)) {
             return;
         }
 
-        let token = new Token(type, content, this.lineno, this.columnno);
+        let token = new Token(type, value, this.line, this.column);
 
         this.tokens.push(token);
 
-        if (content) {
-            this.moveCoordinates(content);
+        if (value) {
+            this.moveCoordinates(value);
         }
     }
 
     protected pushWhitespaceTrimToken(modifier: string) {
         if (modifier) {
-            let type: TokenType;
-
-            if (modifier === this.options.whitespace_trim) {
-                type = TokenType.WHITESPACE_CONTROL_MODIFIER_TRIMMING;
-            } else {
-                type = TokenType.WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING;
-            }
-
-            this.tokens.push(new Token(type, modifier, this.lineno, this.columnno));
-            this.moveCoordinates(modifier);
+            this.pushToken(modifier === this.whitespaceTrim ? TokenType.WHITESPACE_CONTROL_MODIFIER_TRIMMING : TokenType.WHITESPACE_CONTROL_MODIFIER_LINE_TRIMMING, modifier);
         }
     }
 
@@ -713,8 +548,8 @@ export class Lexer {
         this.scope = {
             value: value,
             expected: expected,
-            line: this.lineno,
-            column: this.columnno
+            line: this.line,
+            column: this.column
         };
     }
 

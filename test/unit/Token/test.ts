@@ -53,8 +53,8 @@ tape('Token', (test) => {
         test.same(Token.typeToEnglish(TokenType.BLOCK_END), 'end of statement block');
         test.same(Token.typeToEnglish(TokenType.BLOCK_START), 'begin of statement block');
         test.same(Token.typeToEnglish(TokenType.EOF), 'end of template');
-        test.same(Token.typeToEnglish(TokenType.INTERPOLATION_END), 'end of string interpolation');
-        test.same(Token.typeToEnglish(TokenType.INTERPOLATION_START), 'begin of string interpolation');
+        test.same(Token.typeToEnglish(TokenType.INTERPOLATION_END), 'end of string interpolation_pair');
+        test.same(Token.typeToEnglish(TokenType.INTERPOLATION_START), 'begin of string interpolation_pair');
         test.same(Token.typeToEnglish(TokenType.NAME), 'name');
         test.same(Token.typeToEnglish(TokenType.NUMBER), 'number');
         test.same(Token.typeToEnglish(TokenType.OPERATOR), 'operator');
